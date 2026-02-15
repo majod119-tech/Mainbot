@@ -3,7 +3,6 @@ from telegram.ext import Application, MessageHandler, CommandHandler, ContextTyp
 import qrcode
 import uuid
 import os
-import csv
 from keep_alive import keep_alive  # استدعاء دالة التشغيل المستمر لمنصة Render
 
 # جلب التوكن من متغيرات البيئة (أمان أفضل) أو استخدام التوكن الحالي
@@ -39,7 +38,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "🔙 عودة":
-        # التحقق مما إذا كان المستخدم في حالة انتظار رقم الهوية
         if context.user_data.get("awaiting_id"):
             context.user_data["awaiting_id"] = False
             keyboard = [["المراجع التدريبية"], ["📕 دليل المتدرب"],
@@ -100,25 +98,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_id"] = False
         found = False
         try:
-            with open("data/students.csv", mode="r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row.get("رقم الهوية", "").strip() == id_number:
-                        student_id = row.get("رقم المتدرب", "غير متوفر")
-                        email = row.get("البريد الالكتروني", "غير متوفر")
-                        await update.message.reply_text(
-                            f"✅ تم العثور على بياناتك:\n\n"
-                            f"🔢 الرقم التدريبي: `{student_id}`\n"
-                            f"📧 البريد الإلكتروني: `{email}`\n\n"
-                            f"يمكنك استخدامه لتسجيل الدخول في أنظمة المؤسسة.",
-                            parse_mode="Markdown")
-                        found = True
-                        break
+            import openpyxl
+            # قراءة ملف الإكسيل
+            wb = openpyxl.load_workbook("data/هويات المتدربين.xlsx", data_only=True)
+            sheet = wb.active
+            
+            # جلب أسماء الأعمدة من الصف الأول
+            headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
+            
+            # تحديد أماكن الأعمدة
+            id_col_idx = headers.index("رقم الهوية") if "رقم الهوية" in headers else -1
+            student_id_col_idx = headers.index("رقم المتدرب") if "رقم المتدرب" in headers else -1
+            email_col_idx = headers.index("البريد الالكتروني") if "البريد الالكتروني" in headers else -1
+            
+            if id_col_idx == -1:
+                await update.message.reply_text("⚠️ تنبيه للمسؤول: عمود 'رقم الهوية' غير موجود في ملف الإكسيل.")
+                return
+
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                current_id = str(row[id_col_idx]).strip() if row[id_col_idx] is not None else ""
+                
+                # إزالة أي أصفار عشرية تظهر عند قراءة الإكسيل للأرقام (مثل 100.0)
+                if current_id.endswith('.0'):
+                    current_id = current_id[:-2]
+                
+                if current_id == id_number:
+                    student_id = "غير متوفر"
+                    email = "غير متوفر"
+                    
+                    if student_id_col_idx != -1 and row[student_id_col_idx] is not None:
+                        student_id = str(row[student_id_col_idx]).strip()
+                        if student_id.endswith('.0'): student_id = student_id[:-2]
+                        
+                    if email_col_idx != -1 and row[email_col_idx] is not None:
+                        email = str(row[email_col_idx]).strip()
+                        
+                    await update.message.reply_text(
+                        f"✅ تم العثور على بياناتك:\n\n"
+                        f"🔢 الرقم التدريبي: `{student_id}`\n"
+                        f"📧 البريد الإلكتروني: `{email}`\n\n"
+                        f"يمكنك استخدامه لتسجيل الدخول في أنظمة المؤسسة.",
+                        parse_mode="Markdown")
+                    found = True
+                    break
         except FileNotFoundError:
             await update.message.reply_text("⚠️ قاعدة بيانات المتدربين غير متوفرة حالياً.")
             return
         except Exception as e:
-            print(f"Error reading CSV: {e}")
+            print(f"Error reading Excel: {e}")
             await update.message.reply_text("⚠️ عذراً، حدث خطأ أثناء البحث في البيانات. يرجى المحاولة لاحقاً.")
             return
 
@@ -202,7 +229,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📝 لرفع تظلمك، اضغط الرابط التالي:\nhttps://forms.gle/CvY7KBuJA66suK1D8")
         return
 
-    # معالجة التظلم النصي إذا تم تفعيل الحالة (ملاحظة: تحتاج لزر لتفعيل هذه الحالة لاحقاً)
     if context.user_data.get("complaint_state"):
         complaint_id = str(uuid.uuid4())[:8]
         file_path = f"complaints/{complaint_id}.txt"
@@ -223,7 +249,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["complaint_state"] = False
         return
 
-    # إذا لم يتعرف البوت على النص
     await update.message.reply_text("يرجى اختيار خدمة من القائمة")
 
 def main():
