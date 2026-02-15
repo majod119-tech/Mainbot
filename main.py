@@ -3,6 +3,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, ContextTyp
 import qrcode
 import uuid
 import os
+import openpyxl
 from keep_alive import keep_alive  # استدعاء دالة التشغيل المستمر لمنصة Render
 
 # جلب التوكن من متغيرات البيئة (أمان أفضل) أو استخدام التوكن الحالي
@@ -97,28 +98,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         id_number = text.strip()
         context.user_data["awaiting_id"] = False
         found = False
+        
         try:
-            import openpyxl
-            # قراءة ملف الإكسيل
-            wb = openpyxl.load_workbook("data/هويات المتدربين.xlsx", data_only=True)
+            # تم تغيير اسم الملف هنا ليصبح بالإنجليزية لتجنب أخطاء السيرفرات السحابية
+            wb = openpyxl.load_workbook("data/students.xlsx", data_only=True)
             sheet = wb.active
             
-            # جلب أسماء الأعمدة من الصف الأول
+            # جلب أسماء الأعمدة من الصف الأول (الترويسة)
             headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]]
             
-            # تحديد أماكن الأعمدة
+            # تحديد أماكن الأعمدة بناءً على المسميات
             id_col_idx = headers.index("رقم الهوية") if "رقم الهوية" in headers else -1
             student_id_col_idx = headers.index("رقم المتدرب") if "رقم المتدرب" in headers else -1
             email_col_idx = headers.index("البريد الالكتروني") if "البريد الالكتروني" in headers else -1
             
             if id_col_idx == -1:
-                await update.message.reply_text("⚠️ تنبيه للمسؤول: عمود 'رقم الهوية' غير موجود في ملف الإكسيل.")
+                await update.message.reply_text("⚠️ تنبيه للمسؤول: عمود 'رقم الهوية' غير موجود في ملف الإكسيل. تأكد من أن الترويسة مكتوبة بهذا الشكل تماماً.")
                 return
 
+            # البحث في الصفوف
             for row in sheet.iter_rows(min_row=2, values_only=True):
                 current_id = str(row[id_col_idx]).strip() if row[id_col_idx] is not None else ""
                 
-                # إزالة أي أصفار عشرية تظهر عند قراءة الإكسيل للأرقام (مثل 100.0)
+                # إزالة أي أصفار عشرية قد تظهر عند قراءة الإكسيل للأرقام (مثل 123456.0)
                 if current_id.endswith('.0'):
                     current_id = current_id[:-2]
                 
@@ -141,12 +143,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown")
                     found = True
                     break
+                    
         except FileNotFoundError:
-            await update.message.reply_text("⚠️ قاعدة بيانات المتدربين غير متوفرة حالياً.")
+            await update.message.reply_text("⚠️ قاعدة بيانات المتدربين غير متوفرة حالياً. (تأكد من تسمية الملف students.xlsx ووضعه في مجلد data)")
             return
         except Exception as e:
             print(f"Error reading Excel: {e}")
-            await update.message.reply_text("⚠️ عذراً، حدث خطأ أثناء البحث في البيانات. يرجى المحاولة لاحقاً.")
+            await update.message.reply_text("⚠️ عذراً، حدث خطأ أثناء قراءة البيانات. يرجى المحاولة لاحقاً.")
             return
 
         if not found:
