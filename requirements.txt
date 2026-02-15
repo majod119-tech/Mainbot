@@ -1,6 +1,4 @@
-flask
-pyTelegramBotAPI
-google-api-python-client
-google-auth
-pandas
-openpyxl
+python-telegram-bot
+qrcode
+Pillow
+Flask
