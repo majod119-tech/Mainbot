@@ -1,5 +1,5 @@
 python-telegram-bot
 Flask
 openpyxl
-qrcode
+qrcode[pil]
 Pillow
